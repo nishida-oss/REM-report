@@ -12,6 +12,7 @@
         body {
             font-family: 'Inter', 'Noto Sans JP', sans-serif;
             background-color: #f8fafc;
+            -webkit-tap-highlight-color: transparent;
         }
 
         @media print {
@@ -53,11 +54,6 @@
                 background: #f1f5f9; padding: 6px; border-radius: 10px; opacity: 1 !important;
             }
             .ctrl-btn { flex: 1; padding: 12px 2px !important; font-size: 14px !important; }
-            .btn-save-mobile {
-                position: fixed; bottom: 20px; right: 20px; z-index: 50;
-                width: auto !important; border-radius: 9999px !important; padding: 16px 24px !important;
-                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
-            }
         }
 
         .photo-placeholder {
@@ -103,28 +99,34 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.5); z-index: 2000; display: flex; align-items: center; justify-content: center;
         }
+
+        .status-badge {
+            cursor: pointer;
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        .status-badge:hover { opacity: 0.8; background: rgba(0,0,0,0.05); }
     </style>
     
     <script>
         window.gapiLoadedGlobal = () => window.dispatchEvent(new Event('gapi-ready'));
         window.gisLoadedGlobal = () => window.dispatchEvent(new Event('gis-ready'));
-        window.init = () => console.log('Ready.');
+        window.init = () => console.log('Initialized.');
     </script>
 </head>
 <body class="pb-10">
 
+    <!-- ドライブ設定モーダル -->
     <div id="driveModal" class="hidden modal-overlay no-print">
         <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-lg w-full mx-4">
             <h3 class="text-xl font-bold mb-4 text-slate-800 text-center">Googleドライブ接続設定</h3>
-            <div class="space-y-4 text-sm text-slate-600 mb-6 leading-relaxed">
-                <p>1. Google Cloudで取得したクライアントIDを入力してください。</p>
-            </div>
             <div class="text-left mb-6">
                 <label class="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-widest">Google クライアントID</label>
                 <input type="text" id="clientIdInput" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono text-xs bg-slate-50" placeholder="xxxx.apps.googleusercontent.com">
             </div>
-            <div id="driveAuthStatus" class="mb-6 p-4 bg-slate-50 rounded-xl text-xs font-bold text-slate-600 text-center min-h-[60px] flex items-center justify-center">
-                準備ができたら下のボタンを押してください
+            <div id="driveAuthStatus" class="mb-6 p-4 bg-slate-50 rounded-xl text-xs font-bold text-slate-600 text-center min-h-[60px] flex items-center justify-center leading-relaxed">
+                IDを入力して下のボタンを押してください
             </div>
             <div class="flex gap-3">
                 <button onclick="closeDriveModal()" class="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition border border-transparent">閉じる</button>
@@ -135,64 +137,66 @@
 
     <nav class="no-print bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-md">
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold flex items-center gap-2 nav-title">📸 写真報告書作成</h1>
+            <h1 class="text-lg md:text-xl font-bold flex items-center gap-2 nav-title">📸 写真報告書作成</h1>
             <div class="flex gap-2">
-                <button onclick="saveAndShowList()" class="text-sm bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded transition">一覧</button>
-                <button onclick="addNewReport()" class="text-sm bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition">+ 新規作成</button>
+                <button onclick="saveAndShowList()" class="text-xs md:sm bg-slate-800 hover:bg-slate-700 px-3 md:px-4 py-2 rounded transition">一覧</button>
+                <button onclick="addNewReport()" class="text-xs md:sm bg-blue-600 hover:bg-blue-500 px-3 md:px-4 py-2 rounded font-bold transition">+ 新規</button>
             </div>
         </div>
     </nav>
 
     <div id="app" class="container mx-auto mt-4 px-2 md:px-4">
         
-        <div id="listView" class="max-w-6xl mx-auto space-y-6">
+        <!-- 管理エリア -->
+        <div id="listView" class="max-w-6xl mx-auto space-y-4 md:space-y-6">
             <div class="bg-white border p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-3 shadow-sm">
-                <div class="flex items-center gap-4">
-                    <div id="syncIndicator" class="flex items-center gap-2 text-slate-500 font-bold text-sm">
-                        ● 保存先: <span id="storageModeText">ローカル (ブラウザ)</span>
+                <div class="flex items-center gap-4 w-full md:w-auto">
+                    <div id="syncIndicator" class="flex items-center gap-2 text-slate-500 font-bold text-xs md:text-sm">
+                        ● 状態: <span id="storageModeText" onclick="applyGroupId(false)" class="status-badge">ローカル</span>
                     </div>
-                    <div class="h-4 w-px bg-slate-200 hidden md:block"></div>
-                    <div class="flex flex-col">
-                        <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest">現在のグループ（フォルダ）</span>
-                        <select id="groupSelect" onchange="changeGroup(this.value)" class="text-sm font-bold text-blue-600 bg-transparent outline-none cursor-pointer">
+                    <div class="h-4 w-px bg-slate-200"></div>
+                    <div class="flex flex-col flex-1">
+                        <span class="text-[8px] md:text-[9px] text-slate-400 font-bold uppercase tracking-widest">グループ（保存先フォルダ）</span>
+                        <select id="groupSelect" onchange="changeGroup(this.value)" class="text-xs md:text-sm font-bold text-blue-600 bg-transparent outline-none cursor-pointer">
                             <option value="general">個人フォルダ (端末内)</option>
                         </select>
                     </div>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="openDriveModal()" class="text-[11px] bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition shadow-md">クラウド連携設定</button>
-                    <button onclick="exportData()" class="text-[11px] bg-slate-50 border px-3 py-2 rounded-lg font-bold hover:bg-slate-100 transition">一括バックアップ</button>
+                <div class="flex gap-2 w-full md:w-auto">
+                    <button onclick="openDriveModal()" class="flex-1 text-[10px] md:text-[11px] bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition shadow-md">クラウド同期設定</button>
+                    <button onclick="exportData()" class="flex-1 text-[10px] md:text-[11px] bg-slate-50 border px-3 py-2 rounded-lg font-bold hover:bg-slate-100 transition">バックアップ</button>
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
                 <div class="bg-white p-4 rounded-xl border shadow-sm">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">現在の報告書</p>
-                    <p id="statTotal" class="text-2xl font-black text-slate-800">---</p>
+                    <p class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest">報告書数</p>
+                    <p id="statTotal" class="text-xl md:text-2xl font-black text-slate-800">---</p>
                 </div>
                 <div class="bg-white p-4 rounded-xl border shadow-sm col-span-1 md:col-span-2 overflow-hidden flex flex-col justify-center">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">同期ステータス・保存先</p>
-                    <p id="syncStatusDesc" class="text-[10px] font-mono text-slate-500 mt-1 truncate">
-                        Googleドライブ > 写真報告書アプリ > (グループ名)
+                    <p class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest">現在の保存先</p>
+                    <p id="syncStatusDesc" class="text-[9px] md:text-[10px] font-mono text-slate-500 mt-1 truncate">
+                        起動時に自動でクラウド接続を試みます
                     </p>
                 </div>
             </div>
 
-            <div class="bg-white rounded-xl shadow-sm border overflow-hidden min-h-[400px]">
+            <!-- リスト -->
+            <div class="bg-white rounded-xl shadow-sm border overflow-hidden min-h-[300px]">
                 <div class="p-4 bg-slate-50 border-b flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <span class="text-sm font-bold text-slate-400">報告書一覧</span>
-                    <input type="text" id="searchInput" oninput="renderTable()" placeholder="検索..." class="px-4 py-1.5 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none text-sm w-full md:w-64 text-slate-800">
+                    <span class="text-xs md:text-sm font-bold text-slate-400">報告書一覧</span>
+                    <input type="text" id="searchInput" oninput="renderTable()" placeholder="タイトル、会社名で検索..." class="px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none text-sm w-full md:w-64 text-slate-800">
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
-                            <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-widest border-b">
-                                <th class="p-4">案件名 / 報告書タイトル</th>
-                                <th class="p-4 hidden md:table-cell">提出先 / 会社名</th>
-                                <th class="p-4 w-32 text-center">操作</th>
+                            <tr class="bg-slate-50 text-slate-500 text-[9px] md:text-[10px] uppercase font-bold tracking-widest border-b">
+                                <th class="p-3 md:p-4">案件名 / タイトル</th>
+                                <th class="p-3 md:p-4 hidden md:table-cell">提出先 / 会社名</th>
+                                <th class="p-3 md:p-4 w-20 md:w-32 text-center">操作</th>
                             </tr>
                         </thead>
-                        <tbody id="reportTableBody" class="text-sm divide-y">
+                        <tbody id="reportTableBody" class="text-xs md:text-sm divide-y">
                             <tr><td colspan="3" class="p-20 text-center text-slate-400">データを読み込んでいます...</td></tr>
                         </tbody>
                     </table>
@@ -200,24 +204,25 @@
             </div>
         </div>
 
+        <!-- 編集画面 -->
         <div id="editView" class="hidden">
-            <div class="no-print max-w-[210mm] mx-auto mb-6 flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm border">
+            <div class="no-print max-w-[210mm] mx-auto mb-4 md:mb-6 flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm border">
                 <div class="flex items-center justify-between w-full md:w-auto gap-4">
-                    <button onclick="saveAndShowList()" class="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
+                    <button onclick="saveAndShowList()" class="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 text-sm">
                         ← 一覧へ戻る
                     </button>
-                    <h2 class="text-md font-bold truncate max-w-[200px] text-slate-800" id="currentTitleDisp">報告書</h2>
+                    <h2 class="text-sm md:text-md font-bold truncate max-w-[150px] md:max-w-[200px] text-slate-800" id="currentTitleDisp">報告書</h2>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="window.print()" class="btn-save-mobile bg-slate-900 text-white px-8 py-3 md:py-2 rounded-lg font-bold shadow-lg text-sm">PDF保存・印刷</button>
+                <div class="flex items-center gap-2 w-full md:w-auto">
+                    <button onclick="window.print()" class="btn-save-mobile flex-1 bg-slate-900 text-white px-8 py-3 md:py-2 rounded-xl font-bold shadow-lg text-sm">PDF保存・印刷</button>
                 </div>
             </div>
 
             <div id="pagesContainer" class="print-area"></div>
 
             <div class="no-print max-w-[210mm] mx-auto mt-4 mb-20 text-center px-2">
-                <button onclick="addBlankPage()" class="w-full py-10 border-2 border-dashed border-slate-300 rounded-2xl text-slate-500 hover:border-blue-500 hover:bg-blue-50 font-bold transition-all bg-white shadow-sm text-base">
-                    + A4ページ(写真3枚セット)を末尾に追加
+                <button onclick="addBlankPage()" class="w-full py-8 md:py-10 border-2 border-dashed border-slate-300 rounded-2xl text-slate-500 hover:border-blue-500 hover:bg-blue-50 font-bold transition-all bg-white shadow-sm text-sm md:text-base">
+                    + ページを末尾に追加 (写真3枚セット)
                 </button>
             </div>
         </div>
@@ -225,6 +230,7 @@
 
     <div id="toast">保存しました</div>
 
+    <!-- Google SDK -->
     <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoadedGlobal()"></script>
     <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoadedGlobal()"></script>
 
@@ -246,21 +252,29 @@
             const input = document.getElementById('clientIdInput');
             if (savedClientId && input) input.value = savedClientId;
             
-            // 最後に選択していたグループを復元
             const lastGroup = localStorage.getItem('last_selected_group');
             if (lastGroup) currentGroupId = lastGroup;
+
+            const mode = localStorage.getItem('storage_mode');
+            if (mode === 'drive') {
+                const storageText = document.getElementById('storageModeText');
+                if(storageText) {
+                    storageText.innerText = 'ログイン待機中...';
+                    storageText.className = 'text-amber-500 font-bold status-badge';
+                }
+            }
 
             loadLocalData();
         };
 
-        // 自動再接続チェック
+        // 自動再接続
         function checkAutoConnect() {
             if (gapiInited && gisInited) {
                 const isDriveMode = localStorage.getItem('storage_mode') === 'drive';
                 const savedClientId = localStorage.getItem('google_drive_client_id');
                 if (isDriveMode && savedClientId) {
-                    console.log("Auto-connecting to Google Drive...");
-                    applyGroupId(true); // 自動実行モード
+                    console.log("Automatic cloud sync resume...");
+                    applyGroupId(true); // 自動実行
                 }
             }
         }
@@ -282,7 +296,7 @@
             localStorage.setItem('google_drive_client_id', clientId);
             
             const statusDiv = document.getElementById('driveAuthStatus');
-            if(statusDiv) statusDiv.innerText = "認証をリクエスト中...";
+            if(statusDiv && !isAuto) statusDiv.innerText = "Google認証を開始します...";
 
             if (typeof google === 'undefined' || !google.accounts) return;
 
@@ -292,22 +306,26 @@
                     scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly',
                     callback: async (resp) => {
                         if (resp.error) {
-                            if(statusDiv) statusDiv.innerHTML = `<span class="text-red-500">認証エラー: ${resp.error}</span>`;
+                            if(statusDiv) statusDiv.innerHTML = `<span class="text-red-500">エラー: ${resp.error}</span>`;
+                            const storageText = document.getElementById('storageModeText');
+                            if(storageText) {
+                                storageText.innerText = '未接続 (クリックで再開)';
+                                storageText.className = 'text-red-500 font-bold status-badge';
+                            }
                             return;
                         }
                         driveAccessToken = resp.access_token;
                         localStorage.setItem('storage_mode', 'drive');
                         
-                        if(statusDiv) statusDiv.innerText = '接続成功！フォルダ確認中...';
                         const storageMode = document.getElementById('storageModeText');
                         if (storageMode) {
                             storageMode.innerText = 'Googleドライブ同期中';
-                            storageMode.className = 'text-green-600 font-bold';
+                            storageMode.className = 'text-green-600 font-bold status-badge';
                         }
                         await setupDriveSync();
                     },
                 });
-                // 自動接続時はヒントなし、手動時はコンセント表示
+                // ブラウザによるポップアップブロックを避けるため、自動時は控えめに
                 tokenClient.requestAccessToken(isAuto ? {hint: ''} : {prompt: 'consent'});
             } catch (e) {
                 if(statusDiv) statusDiv.innerHTML = `<span class="text-red-500">初期化失敗: ${e.message}</span>`;
@@ -318,8 +336,6 @@
             try {
                 rootFolderId = await findOrCreateFolder('写真報告書アプリ');
                 await syncGroupsFromDrive();
-                
-                // 以前選んでいたグループをセレクトボックスで選択状態にする
                 const select = document.getElementById('groupSelect');
                 if (select) {
                     const lastGroup = localStorage.getItem('last_selected_group');
@@ -329,11 +345,8 @@
                         await changeGroup(lastGroup);
                     }
                 }
-                
                 closeDriveModal();
-            } catch (err) { 
-                console.error(err); 
-            }
+            } catch (err) { console.error(err); }
         }
 
         async function findOrCreateFolder(name, parentId = null) {
@@ -368,23 +381,22 @@
 
         window.changeGroup = async (groupId) => {
             currentGroupId = groupId;
-            localStorage.setItem('last_selected_group', groupId); // 選択を記憶
-            
+            localStorage.setItem('last_selected_group', groupId); 
             const statusDesc = document.getElementById('syncStatusDesc');
             if (groupId === 'general') {
                 localStorage.setItem('storage_mode', 'local');
                 const storageMode = document.getElementById('storageModeText');
                 if(storageMode) {
-                    storageMode.innerText = 'ローカル (ブラウザ)';
-                    storageMode.className = 'text-slate-500 font-bold';
+                    storageMode.innerText = 'ローカル';
+                    storageMode.className = 'text-slate-500 font-bold status-badge';
                 }
-                statusDesc.innerText = "ブラウザのメモリ (LocalStorage) に保存中";
+                if(statusDesc) statusDesc.innerText = "ブラウザのメモリ (LocalStorage) に保存中";
                 loadLocalData();
             } else {
                 localStorage.setItem('storage_mode', 'drive');
                 const select = document.getElementById('groupSelect');
                 const groupName = select.options[select.selectedIndex].text;
-                statusDesc.innerText = `Googleドライブ > 写真報告書アプリ > ${groupName}`;
+                if(statusDesc) statusDesc.innerText = `Googleドライブ > 写真報告書アプリ > ${groupName}`;
                 await loadReportsFromDrive(groupId);
             }
         };
@@ -392,20 +404,22 @@
         async function loadReportsFromDrive(folderId) {
             const body = document.getElementById('reportTableBody');
             if (body) body.innerHTML = '<tr><td colspan="3" class="p-20 text-center text-slate-400">同期中...</td></tr>';
-            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and trashed = false&fields=files(id,name)`, {
-                headers: { 'Authorization': `Bearer ${driveAccessToken}` }
-            }).then(r => r.json());
-            reports = [];
-            for (const file of res.files || []) {
-                if (file.name.endsWith('.json')) {
-                    const content = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
-                        headers: { 'Authorization': `Bearer ${driveAccessToken}` }
-                    }).then(r => r.json()).catch(() => null);
-                    if (content) { content.driveFileId = file.id; reports.push(content); }
+            try {
+                const res = await fetch(`https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and trashed = false&fields=files(id,name)`, {
+                    headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+                }).then(r => r.json());
+                reports = [];
+                for (const file of res.files || []) {
+                    if (file.name.endsWith('.json')) {
+                        const content = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+                            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+                        }).then(r => r.json()).catch(() => null);
+                        if (content) { content.driveFileId = file.id; reports.push(content); }
+                    }
                 }
-            }
-            renderTable();
-            updateStats();
+                renderTable();
+                updateStats();
+            } catch (err) { console.error(err); }
         }
 
         async function saveReportToDrive(report) {
@@ -425,7 +439,7 @@
 
         window.addNewReport = async () => {
             const id = Date.now().toString();
-            const newReport = { id, title: "新規報告書", date: new Date().toISOString().split('T')[0], observations: Array(3).fill(null).map(() => ({ img: null, comment: "" })), updatedAt: Date.now() };
+            const newReport = { id, title: "新規報告書", subtitle: "", company: "", author: "", date: new Date().toISOString().split('T')[0], observations: Array(3).fill(null).map(() => ({ img: null, comment: "" })), updatedAt: Date.now() };
             reports.unshift(newReport);
             await saveReportToDrive(newReport);
             editReport(id);
@@ -491,12 +505,12 @@
             const body = document.getElementById('reportTableBody');
             if (!body) return;
             const filtered = reports.filter(r => (r.title || '').toLowerCase().includes(q) || (r.company || '').toLowerCase().includes(q));
-            if (filtered.length === 0) { body.innerHTML = '<tr><td colspan="3" class="p-20 text-center text-slate-400">報告書がありません。</td></tr>'; return; }
+            if (filtered.length === 0) { body.innerHTML = '<tr><td colspan="3" class="p-20 text-center text-slate-400">表示できる報告書がありません。</td></tr>'; return; }
             body.innerHTML = filtered.map(r => `
                 <tr class="hover:bg-blue-50 transition cursor-pointer" onclick="editReport('${r.id}')">
-                    <td class="p-4 font-bold text-slate-800">${r.title || '無題'}</td>
-                    <td class="p-4 text-slate-600 hidden md:table-cell">${r.company || '---'}</td>
-                    <td class="p-4 text-center">
+                    <td class="p-3 md:p-4 font-bold text-slate-800">${r.title || '無題'}</td>
+                    <td class="p-3 md:p-4 text-slate-600 hidden md:table-cell">${r.company || '---'}</td>
+                    <td class="p-3 md:p-4 text-center">
                         <button onclick="event.stopPropagation(); deleteReport('${r.id}')" class="text-red-400 font-bold px-2 hover:text-red-600 transition">消去</button>
                     </td>
                 </tr>
@@ -510,50 +524,58 @@
             container.innerHTML = '';
 
             const cover = document.createElement('div');
-            cover.className = 'a4-page shadow-xl mb-10';
+            cover.className = 'a4-page shadow-xl mb-6 md:mb-10';
             cover.id = "page-top";
-            cover.innerHTML = `<div class="flex-1 flex flex-col justify-center items-center py-10 text-center space-y-12">
-                <div class="w-full space-y-6">
-                    <p class="text-xs font-black text-blue-500 tracking-[0.4em]">現場写真報告書</p>
-                    <input type="text" class="text-2xl md:text-4xl font-black w-full text-center border-none bg-transparent" value="${r.title}" onchange="updateMeta('title', this.value)">
+            cover.innerHTML = `<div class="flex-1 flex flex-col justify-center items-center py-6 md:py-10 text-center space-y-8 md:space-y-12">
+                <div class="w-full space-y-4 md:space-y-6">
+                    <p class="text-[10px] md:text-xs font-black text-blue-500 tracking-[0.4em]">現場写真報告書</p>
+                    <input type="text" class="text-xl md:text-4xl font-black w-full text-center border-none bg-transparent focus:ring-0" value="${r.title}" onchange="updateMeta('title', this.value)" placeholder="案件名を入力">
                 </div>
-                <div class="w-full md:w-1/2 px-6 space-y-8">
-                    <div><p class="text-[10px] font-bold text-slate-400 mb-1 tracking-widest uppercase">作成日</p><input type="date" class="cover-input text-lg font-bold" value="${r.date}" onchange="updateMeta('date', this.value)"></div>
+                <div class="w-full md:w-1/2 px-6 space-y-6 md:space-y-8">
+                    <div><p class="text-[9px] md:text-[10px] font-bold text-slate-400 mb-1 tracking-widest uppercase text-center">作成日</p><input type="date" class="cover-input text-base md:text-lg font-bold" value="${r.date}" onchange="updateMeta('date', this.value)"></div>
+                    <div><p class="text-[9px] md:text-[10px] font-bold text-slate-400 mb-1 tracking-widest uppercase text-center">作成担当者</p><input type="text" class="cover-input text-base md:text-lg font-bold" value="${r.author || ''}" onchange="updateMeta('author', this.value)" placeholder="氏名"></div>
+                </div>
+                <div class="mt-auto w-full px-4 pt-10">
+                    <p class="text-[10px] font-bold text-slate-400 mb-1 tracking-widest uppercase text-center">提出先 / 会社名</p>
+                    <input type="text" class="text-xl md:text-2xl font-black w-full text-center border-none bg-transparent focus:ring-0" value="${r.company || ''}" onchange="updateMeta('company', this.value)" placeholder="会社名">
                 </div>
             </div>`;
             container.appendChild(cover);
 
             const toc = document.createElement('div');
-            toc.className = 'a4-page shadow-xl mb-10';
+            toc.className = 'a4-page shadow-xl mb-6 md:mb-10';
             const items = r.observations.map((obs, idx) => `<div class="toc-item" onclick="document.getElementById('obs-${idx}').scrollIntoView({behavior: 'smooth'})">
-                <span class="font-bold text-blue-600 min-w-[50px]">No.${idx + 1}</span>
-                <span class="truncate text-slate-700">${obs.comment ? obs.comment.substring(0, 45).replace(/\n/g, ' ') : '（未記入）'}</span>
+                <span class="font-bold text-blue-600 min-w-[40px] md:min-w-[50px] text-xs md:text-sm">No.${idx + 1}</span>
+                <span class="truncate text-slate-700 text-xs md:text-sm">${obs.comment ? obs.comment.substring(0, 45).replace(/\n/g, ' ') : '（未記入）'}</span>
             </div>`).join('');
-            toc.innerHTML = `<div class="flex-1 flex flex-col p-4 md:p-10"><h2 class="text-2xl font-black text-center border-b-2 border-slate-900 pb-4 mb-8">目次</h2><div class="flex-1 overflow-y-auto">${items || '項目なし'}</div></div><div class="text-center text-[10px] text-slate-300 font-mono tracking-widest mt-4">P.2 / 目次</div>`;
+            toc.innerHTML = `<div class="flex-1 flex flex-col p-4 md:p-10"><h2 class="text-lg md:text-2xl font-black text-center border-b-2 border-slate-900 pb-4 mb-6 md:mb-8">目次</h2><div class="flex-1 overflow-y-auto">${items || '項目なし'}</div></div><div class="text-center text-[9px] md:text-[10px] text-slate-300 font-mono tracking-widest mt-4">P.2 / 目次</div>`;
             container.appendChild(toc);
 
             const pageCount = Math.ceil(r.observations.length / 3) || 1;
             for (let p = 0; p < pageCount; p++) {
                 const pageEl = document.createElement('div');
-                pageEl.className = 'a4-page shadow-xl mb-10';
+                pageEl.className = 'a4-page shadow-xl mb-6 md:mb-10';
                 let rows = '';
                 for (let i = 0; i < 3; i++) {
                     const idx = p * 3 + i;
                     const obs = r.observations[idx];
                     if (obs) rows += `<div id="obs-${idx}" class="flex h-[30%] mb-4 observation-row relative group">
                         <div class="row-controls no-print"><button class="ctrl-btn" onclick="moveRow(${idx}, -1)">↑</button><button class="ctrl-btn" onclick="moveRow(${idx}, 1)">↓</button><button class="ctrl-btn text-red-500 font-bold" onclick="deleteRow(${idx})">✕</button></div>
-                        <div class="photo-placeholder rounded-lg" onclick="uploadImg(${idx})" onpaste="pasteImg(event, ${idx})">${obs.img ? `<img src="${obs.img}"><button class="btn-clear-img no-print" onclick="event.stopPropagation(); clearImage(${idx})">×</button>` : `<div class="text-center text-slate-300"><p class="text-2xl">📸</p><p class="text-[10px]">写真を選択</p></div>`}</div>
-                        <div class="comment-area"><p class="text-[10px] font-black text-blue-500 tracking-widest font-mono">No.${idx + 1}</p><textarea onchange="updateObservation(${idx}, 'comment', this.value)" placeholder="状況...">${obs.comment || ""}</textarea></div>
+                        <div class="photo-placeholder rounded-lg" onclick="uploadImg(${idx})" onpaste="pasteImg(event, ${idx})">${obs.img ? `<img src="${obs.img}"><button class="btn-clear-img no-print" onclick="event.stopPropagation(); clearImage(${idx})">×</button>` : `<div class="text-center text-slate-300"><p class="text-2xl">📸</p><p class="text-[10px] font-bold">写真を選択 / 撮影</p></div>`}</div>
+                        <div class="comment-area"><p class="text-[9px] md:text-[10px] font-black text-blue-500 tracking-widest font-mono">No.${idx + 1}</p><textarea onchange="updateObservation(${idx}, 'comment', this.value)" placeholder="状況を入力...">${obs.comment || ""}</textarea></div>
                     </div>`;
                 }
-                pageEl.innerHTML = `<div class="border-b-4 border-slate-900 pb-2 mb-8 font-bold flex justify-between"><h3>${r.title}</h3><p>${r.date}</p></div><div class="flex-1">${rows}</div><div class="text-center text-[10px] text-slate-300 font-mono mt-4">PAGE ${p + 3} / ${pageCount + 2}</div>`;
+                pageEl.innerHTML = `<div class="border-b-4 border-slate-900 pb-2 mb-6 md:mb-8 font-bold flex justify-between items-end"><h3 class="text-xs md:text-sm truncate mr-4">${r.title}</h3><p class="text-[10px] md:text-xs text-slate-400 whitespace-nowrap">${r.date}</p></div><div class="flex-1">${rows}</div><div class="text-center text-[9px] md:text-[10px] text-slate-300 font-mono mt-4">PAGE ${p + 3} / ${pageCount + 2}</div>`;
                 container.appendChild(pageEl);
             }
         };
 
         window.uploadImg = (idx) => {
             const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
-            input.onchange = (e) => { const reader = new FileReader(); reader.onload = (re) => { const r = reports.find(report => report.id === currentReportId); if (r) { r.observations[idx].img = re.target.result; renderPages(); saveReportToDrive(r); } }; reader.readAsDataURL(e.target.files[0]); };
+            input.onchange = (e) => { 
+                const file = e.target.files[0]; if(!file) return;
+                const reader = new FileReader(); reader.onload = (re) => { const r = reports.find(report => report.id === currentReportId); if (r) { r.observations[idx].img = re.target.result; renderPages(); saveReportToDrive(r); } }; reader.readAsDataURL(file); 
+            }; 
             input.click();
         };
 
