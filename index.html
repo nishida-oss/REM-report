@@ -106,9 +106,15 @@
     </style>
     
     <script>
-        window.gapiLoadedGlobal = () => window.dispatchEvent(new Event('gapi-ready'));
-        window.gisLoadedGlobal = () => window.dispatchEvent(new Event('gis-ready'));
-        window.init = () => console.log('Ready.');
+        window.gapiLoadedGlobal = () => {
+            console.log('GAPI Loaded');
+            window.dispatchEvent(new Event('gapi-ready'));
+        };
+        window.gisLoadedGlobal = () => {
+            console.log('GIS Loaded');
+            window.dispatchEvent(new Event('gis-ready'));
+        };
+        window.init = () => console.log('Starting...');
     </script>
 </head>
 <body class="pb-10">
@@ -117,13 +123,13 @@
         <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-lg w-full mx-4">
             <h3 class="text-xl font-bold mb-4 text-slate-800 text-center">Googleドライブ接続設定</h3>
             <div class="space-y-4 text-sm text-slate-600 mb-6 leading-relaxed">
-                <p>1. 発行したクライアントIDを貼り付けてください。</p>
+                <p>1. Google Cloudで取得したクライアントIDを入力してください。</p>
             </div>
             <div class="text-left mb-6">
                 <label class="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-widest">Google クライアントID</label>
                 <input type="text" id="clientIdInput" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono text-xs bg-slate-50" placeholder="xxxx.apps.googleusercontent.com">
             </div>
-            <div id="driveAuthStatus" class="mb-6 p-4 bg-slate-50 rounded-xl text-xs font-bold text-slate-600 text-center">
+            <div id="driveAuthStatus" class="mb-6 p-4 bg-slate-50 rounded-xl text-xs font-bold text-slate-600 text-center min-h-[60px] flex items-center justify-center">
                 準備ができたら下のボタンを押してください
             </div>
             <div class="flex gap-3">
@@ -236,8 +242,8 @@
         let gapiInited = false;
         let gisInited = false;
 
-        window.addEventListener('gapi-ready', () => gapiInited = true);
-        window.addEventListener('gis-ready', () => gisInited = true);
+        window.addEventListener('gapi-ready', () => { gapiInited = true; });
+        window.addEventListener('gis-ready', () => { gisInited = true; });
 
         window.init = async () => {
             const savedClientId = localStorage.getItem('google_drive_client_id');
@@ -262,27 +268,38 @@
             if (!clientId) { alert('クライアントIDを入力してください'); return; }
             localStorage.setItem('google_drive_client_id', clientId);
             
-            if (!gisInited || !gapiInited) {
-                alert('準備中です。数秒待ってから再試行してください。');
+            const statusDiv = document.getElementById('driveAuthStatus');
+            statusDiv.innerText = "認証をリクエスト中...";
+
+            if (typeof google === 'undefined' || !google.accounts) {
+                statusDiv.innerHTML = '<span class="text-red-500">Google SDKが読み込まれていません。ページを更新してください。</span>';
                 return;
             }
 
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: clientId,
-                scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly',
-                callback: async (resp) => {
-                    if (resp.error) {
-                        alert('認証エラー: ' + resp.error);
-                        return;
-                    }
-                    driveAccessToken = resp.access_token;
-                    document.getElementById('driveAuthStatus').innerText = '接続成功！初期化中...';
-                    document.getElementById('storageModeText').innerText = 'Googleドライブ同期';
-                    document.getElementById('storageModeText').className = 'text-green-600 font-bold';
-                    await setupDriveSync();
-                },
-            });
-            tokenClient.requestAccessToken();
+            try {
+                tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: clientId,
+                    scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly',
+                    callback: async (resp) => {
+                        if (resp.error) {
+                            statusDiv.innerHTML = `<span class="text-red-500">認証エラー: ${resp.error}</span>`;
+                            return;
+                        }
+                        driveAccessToken = resp.access_token;
+                        statusDiv.innerText = '接続成功！フォルダ確認中...';
+                        const storageMode = document.getElementById('storageModeText');
+                        if (storageMode) {
+                            storageMode.innerText = 'Googleドライブ同期中';
+                            storageMode.className = 'text-green-600 font-bold';
+                        }
+                        await setupDriveSync();
+                    },
+                });
+                tokenClient.requestAccessToken({prompt: 'consent'});
+            } catch (e) {
+                statusDiv.innerHTML = `<span class="text-red-500">初期化失敗: ${e.message}</span>`;
+                console.error(e);
+            }
         };
 
         async function setupDriveSync() {
@@ -290,7 +307,10 @@
                 rootFolderId = await findOrCreateFolder('写真報告書アプリ');
                 await syncGroupsFromDrive();
                 closeDriveModal();
-            } catch (err) { console.error(err); }
+            } catch (err) { 
+                document.getElementById('driveAuthStatus').innerHTML = '<span class="text-red-500">フォルダ作成に失敗しました</span>';
+                console.error(err); 
+            }
         }
 
         async function findOrCreateFolder(name, parentId = null) {
