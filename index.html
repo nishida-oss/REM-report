@@ -106,15 +106,9 @@
     </style>
     
     <script>
-        window.gapiLoadedGlobal = () => {
-            console.log('GAPI Loaded');
-            window.dispatchEvent(new Event('gapi-ready'));
-        };
-        window.gisLoadedGlobal = () => {
-            console.log('GIS Loaded');
-            window.dispatchEvent(new Event('gis-ready'));
-        };
-        window.init = () => console.log('Starting...');
+        window.gapiLoadedGlobal = () => window.dispatchEvent(new Event('gapi-ready'));
+        window.gisLoadedGlobal = () => window.dispatchEvent(new Event('gis-ready'));
+        window.init = () => console.log('Ready.');
     </script>
 </head>
 <body class="pb-10">
@@ -177,8 +171,10 @@
                     <p id="statTotal" class="text-2xl font-black text-slate-800">---</p>
                 </div>
                 <div class="bg-white p-4 rounded-xl border shadow-sm col-span-1 md:col-span-2 overflow-hidden flex flex-col justify-center">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">同期ステータス</p>
-                    <p id="syncStatusDesc" class="text-[10px] font-mono text-slate-500 mt-1 truncate">クラウド接続すると、ドライブ内のフォルダが表示されます</p>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">同期ステータス・保存先</p>
+                    <p id="syncStatusDesc" class="text-[10px] font-mono text-slate-500 mt-1 truncate">
+                        Googleドライブ > 写真報告書アプリ > (グループ名)
+                    </p>
                 </div>
             </div>
 
@@ -345,9 +341,14 @@
 
         window.changeGroup = async (groupId) => {
             currentGroupId = groupId;
+            const statusDesc = document.getElementById('syncStatusDesc');
             if (groupId === 'general') {
+                statusDesc.innerText = "ブラウザのメモリ (LocalStorage) に保存中";
                 loadLocalData();
             } else {
+                const select = document.getElementById('groupSelect');
+                const groupName = select.options[select.selectedIndex].text;
+                statusDesc.innerText = `Googleドライブ > 写真報告書アプリ > ${groupName}`;
                 await loadReportsFromDrive(groupId);
             }
         };
