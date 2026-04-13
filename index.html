@@ -238,15 +238,32 @@
         let gapiInited = false;
         let gisInited = false;
 
-        window.addEventListener('gapi-ready', () => { gapiInited = true; });
-        window.addEventListener('gis-ready', () => { gisInited = true; });
+        window.addEventListener('gapi-ready', () => { gapiInited = true; checkAutoConnect(); });
+        window.addEventListener('gis-ready', () => { gisInited = true; checkAutoConnect(); });
 
         window.init = async () => {
             const savedClientId = localStorage.getItem('google_drive_client_id');
             const input = document.getElementById('clientIdInput');
             if (savedClientId && input) input.value = savedClientId;
+            
+            // 最後に選択していたグループを復元
+            const lastGroup = localStorage.getItem('last_selected_group');
+            if (lastGroup) currentGroupId = lastGroup;
+
             loadLocalData();
         };
+
+        // 自動再接続チェック
+        function checkAutoConnect() {
+            if (gapiInited && gisInited) {
+                const isDriveMode = localStorage.getItem('storage_mode') === 'drive';
+                const savedClientId = localStorage.getItem('google_drive_client_id');
+                if (isDriveMode && savedClientId) {
+                    console.log("Auto-connecting to Google Drive...");
+                    applyGroupId(true); // 自動実行モード
+                }
+            }
+        }
 
         function loadLocalData() {
             const data = localStorage.getItem(`reports_v7_${currentGroupId}`);
@@ -258,19 +275,16 @@
         window.openDriveModal = () => document.getElementById('driveModal').classList.remove('hidden');
         window.closeDriveModal = () => document.getElementById('driveModal').classList.add('hidden');
 
-        window.applyGroupId = () => {
+        window.applyGroupId = (isAuto = false) => {
             const clientIdInput = document.getElementById('clientIdInput');
             const clientId = clientIdInput ? clientIdInput.value.trim() : "";
-            if (!clientId) { alert('クライアントIDを入力してください'); return; }
+            if (!clientId) { if(!isAuto) alert('クライアントIDを入力してください'); return; }
             localStorage.setItem('google_drive_client_id', clientId);
             
             const statusDiv = document.getElementById('driveAuthStatus');
-            statusDiv.innerText = "認証をリクエスト中...";
+            if(statusDiv) statusDiv.innerText = "認証をリクエスト中...";
 
-            if (typeof google === 'undefined' || !google.accounts) {
-                statusDiv.innerHTML = '<span class="text-red-500">Google SDKが読み込まれていません。ページを更新してください。</span>';
-                return;
-            }
+            if (typeof google === 'undefined' || !google.accounts) return;
 
             try {
                 tokenClient = google.accounts.oauth2.initTokenClient({
@@ -278,11 +292,13 @@
                     scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly',
                     callback: async (resp) => {
                         if (resp.error) {
-                            statusDiv.innerHTML = `<span class="text-red-500">認証エラー: ${resp.error}</span>`;
+                            if(statusDiv) statusDiv.innerHTML = `<span class="text-red-500">認証エラー: ${resp.error}</span>`;
                             return;
                         }
                         driveAccessToken = resp.access_token;
-                        statusDiv.innerText = '接続成功！フォルダ確認中...';
+                        localStorage.setItem('storage_mode', 'drive');
+                        
+                        if(statusDiv) statusDiv.innerText = '接続成功！フォルダ確認中...';
                         const storageMode = document.getElementById('storageModeText');
                         if (storageMode) {
                             storageMode.innerText = 'Googleドライブ同期中';
@@ -291,10 +307,10 @@
                         await setupDriveSync();
                     },
                 });
-                tokenClient.requestAccessToken({prompt: 'consent'});
+                // 自動接続時はヒントなし、手動時はコンセント表示
+                tokenClient.requestAccessToken(isAuto ? {hint: ''} : {prompt: 'consent'});
             } catch (e) {
-                statusDiv.innerHTML = `<span class="text-red-500">初期化失敗: ${e.message}</span>`;
-                console.error(e);
+                if(statusDiv) statusDiv.innerHTML = `<span class="text-red-500">初期化失敗: ${e.message}</span>`;
             }
         };
 
@@ -302,9 +318,20 @@
             try {
                 rootFolderId = await findOrCreateFolder('写真報告書アプリ');
                 await syncGroupsFromDrive();
+                
+                // 以前選んでいたグループをセレクトボックスで選択状態にする
+                const select = document.getElementById('groupSelect');
+                if (select) {
+                    const lastGroup = localStorage.getItem('last_selected_group');
+                    if (lastGroup && Array.from(select.options).some(o => o.value === lastGroup)) {
+                        select.value = lastGroup;
+                        currentGroupId = lastGroup;
+                        await changeGroup(lastGroup);
+                    }
+                }
+                
                 closeDriveModal();
             } catch (err) { 
-                document.getElementById('driveAuthStatus').innerHTML = '<span class="text-red-500">フォルダ作成に失敗しました</span>';
                 console.error(err); 
             }
         }
@@ -341,11 +368,20 @@
 
         window.changeGroup = async (groupId) => {
             currentGroupId = groupId;
+            localStorage.setItem('last_selected_group', groupId); // 選択を記憶
+            
             const statusDesc = document.getElementById('syncStatusDesc');
             if (groupId === 'general') {
+                localStorage.setItem('storage_mode', 'local');
+                const storageMode = document.getElementById('storageModeText');
+                if(storageMode) {
+                    storageMode.innerText = 'ローカル (ブラウザ)';
+                    storageMode.className = 'text-slate-500 font-bold';
+                }
                 statusDesc.innerText = "ブラウザのメモリ (LocalStorage) に保存中";
                 loadLocalData();
             } else {
+                localStorage.setItem('storage_mode', 'drive');
                 const select = document.getElementById('groupSelect');
                 const groupName = select.options[select.selectedIndex].text;
                 statusDesc.innerText = `Googleドライブ > 写真報告書アプリ > ${groupName}`;
