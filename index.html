@@ -53,6 +53,11 @@
                 background: #f1f5f9; padding: 6px; border-radius: 10px; opacity: 1 !important;
             }
             .ctrl-btn { flex: 1; padding: 12px 2px !important; font-size: 14px !important; }
+            .btn-save-mobile {
+                position: fixed; bottom: 20px; right: 20px; z-index: 50;
+                width: auto !important; border-radius: 9999px !important; padding: 16px 24px !important;
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+            }
         }
 
         .photo-placeholder {
@@ -123,7 +128,7 @@
             </div>
             <div class="flex gap-3">
                 <button onclick="closeDriveModal()" class="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition border border-transparent">閉じる</button>
-                <button id="authBtn" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition">接続を開始</button>
+                <button id="authBtn" onclick="applyGroupId()" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition">接続を開始</button>
             </div>
         </div>
     </div>
@@ -186,7 +191,7 @@
                             </tr>
                         </thead>
                         <tbody id="reportTableBody" class="text-sm divide-y">
-                            <tr><td colspan="3" class="p-20 text-center text-slate-400">読み込み中...</td></tr>
+                            <tr><td colspan="3" class="p-20 text-center text-slate-400">データを読み込んでいます...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -266,7 +271,10 @@
                 client_id: clientId,
                 scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly',
                 callback: async (resp) => {
-                    if (resp.error) return;
+                    if (resp.error) {
+                        alert('認証エラー: ' + resp.error);
+                        return;
+                    }
                     driveAccessToken = resp.access_token;
                     document.getElementById('driveAuthStatus').innerText = '接続成功！初期化中...';
                     document.getElementById('storageModeText').innerText = 'Googleドライブ同期';
