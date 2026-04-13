@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>写真報告書作成 - Googleドライブ連携</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;700&display=swap');
+        
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        @media print {
+            body { background: white; margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+            .print-area { margin: 0 !important; border: none !important; box-shadow: none !important; width: 210mm; }
+            .a4-page { margin: 0 !important; box-shadow: none !important; page-break-after: always; border: none !important; }
+            .a4-page:last-child { page-break-after: auto; }
+        }
+
+        .a4-page {
+            width: 210mm;
+            height: 297mm;
+            padding: 20mm;
+            margin: 20px auto;
+            background: white;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            border: 1px solid #e2e8f0;
+        }
+
+        @media (max-width: 768px) {
+            .a4-page {
+                width: 100% !important; height: auto !important; padding: 15px !important;
+                margin: 0 0 20px 0 !important; border-radius: 0 !important;
+            }
+            .observation-row {
+                flex-direction: column !important; margin-bottom: 60px !important;
+                background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px;
+            }
+            .photo-placeholder { width: 100% !important; height: 240px !important; }
+            .comment-area { padding-left: 0 !important; padding-top: 12px; min-height: 160px; }
+            .row-controls {
+                top: auto !important; bottom: -50px !important; left: 0 !important; right: 0 !important;
+                display: flex !important; justify-content: space-between !important;
+                background: #f1f5f9; padding: 6px; border-radius: 10px; opacity: 1 !important;
+            }
+            .ctrl-btn { flex: 1; padding: 12px 2px !important; font-size: 14px !important; }
+            .btn-save-mobile {
+                position: fixed; bottom: 20px; right: 20px; z-index: 50;
+                width: auto !important; border-radius: 9999px !important; padding: 16px 24px !important;
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+            }
+        }
+
+        .photo-placeholder {
+            background-color: #f8fafc; border: 2px dashed #cbd5e1;
+            display: flex; align-items: center; justify-content: center;
+            height: 62mm; width: 88mm; overflow: hidden; position: relative; cursor: pointer; outline: none;
+        }
+        .photo-placeholder:focus { border-color: #3b82f6; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); border-style: solid; }
+        .photo-placeholder img { width: 100%; height: 100%; object-fit: cover; }
+
+        .comment-area { flex: 1; padding-left: 8mm; display: flex; flex-direction: column; position: relative; }
+        textarea { width: 100%; height: 100%; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; resize: none; font-size: 14px; line-height: 1.6; }
+        
+        .cover-input { border: none; border-bottom: 2px solid #334155; padding: 8px; text-align: center; width: 100%; background: transparent; }
+
+        #toast {
+            position: fixed; bottom: 20px; right: 20px; padding: 12px 24px;
+            background: #1e293b; color: white; border-radius: 50px; opacity: 0; transition: 0.3s; z-index: 1000;
+        }
+        #toast.show { opacity: 1; }
+
+        .btn-clear-img {
+            position: absolute; top: 8px; right: 8px; background: rgba(239, 68, 68, 0.9);
+            color: white; width: 30px; height: 30px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 20px; z-index: 10;
+        }
+
+        .row-controls { position: absolute; right: 0; top: -30px; display: flex; gap: 6px; opacity: 0; transition: 0.2s; }
+        .observation-row:hover .row-controls { opacity: 1; }
+        
+        .ctrl-btn {
+            background: white; border: 1px solid #e2e8f0; color: #64748b; padding: 4px 12px;
+            border-radius: 6px; font-size: 12px; font-weight: bold; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .ctrl-btn:hover { background: #f8fafc; color: #3b82f6; border-color: #3b82f6; }
+
+        .toc-item {
+            border-bottom: 1px dotted #e2e8f0; padding: 12px 6px;
+            cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+        }
+        .toc-item:hover { background-color: #f1f5f9; color: #3b82f6; }
+
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 2000; display: flex; align-items: center; justify-content: center;
+        }
+    </style>
+    
+    <script>
+        // ReferenceErrorを防ぐため、SDKロード関数を最上部でグローバル定義
+        window.gapiLoadedGlobal = () => window.dispatchEvent(new Event('gapi-ready'));
+        window.gisLoadedGlobal = () => window.dispatchEvent(new Event('gis-ready'));
+        window.init = () => console.log('App ready to initialize.');
+    </script>
+</head>
+<body class="pb-10">
+
+    <!-- クラウド設定モーダル -->
+    <div id="driveModal" class="hidden modal-overlay no-print">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-lg w-full mx-4">
+            <h3 class="text-xl font-bold mb-4 text-slate-800 text-center">Googleドライブ接続設定</h3>
+            <div class="space-y-4 text-sm text-slate-600 mb-6 leading-relaxed">
+                <p>1. Google Cloud Consoleで「クライアントID」を作成してください。</p>
+                <p>2. 下記の入力欄にIDを貼り付けてください。</p>
+                <p class="p-3 bg-amber-50 rounded-lg text-amber-700 text-xs border border-amber-200">
+                    <b>注意:</b> セキュリティ上、<code>file://</code>（ローカルファイル）では動作しません。VS CodeのLive Serverなどを使用し、<code>http://localhost</code> で開いてください。
+                </p>
+            </div>
+            <div class="text-left mb-6">
+                <label class="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-widest">Google クライアントID</label>
+                <input type="text" id="clientIdInput" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-xs" placeholder="xxxx.apps.googleusercontent.com">
+            </div>
+            <div id="driveAuthStatus" class="mb-6 p-4 bg-slate-50 rounded-xl text-xs font-bold text-slate-600 text-center">
+                接続準備が整ったら下のボタンを押してください
+            </div>
+            <div class="flex gap-3">
+                <button onclick="closeDriveModal()" class="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition">閉じる</button>
+                <button id="authBtn" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition">接続を開始</button>
+            </div>
+        </div>
+    </div>
+
+    <nav class="no-print bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2 nav-title">📸 写真報告書作成</h1>
+            <div class="flex gap-2">
+                <button onclick="saveAndShowList()" class="text-sm bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded transition">一覧</button>
+                <button onclick="addNewReport()" class="text-sm bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition">+ 新規</button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="app" class="container mx-auto mt-4 px-2 md:px-4">
+        
+        <!-- 一覧画面 -->
+        <div id="listView" class="max-w-6xl mx-auto space-y-6">
+            <div class="bg-white border p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-3 shadow-sm">
+                <div class="flex items-center gap-4">
+                    <div id="syncIndicator" class="flex items-center gap-2 text-slate-500 font-bold text-sm">
+                        ● 保存先: <span id="storageModeText">ローカル (ブラウザ)</span>
+                    </div>
+                    <div class="h-4 w-px bg-slate-200 hidden md:block"></div>
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest">現在のグループ（フォルダ）</span>
+                        <select id="groupSelect" onchange="changeGroup(this.value)" class="text-sm font-bold text-blue-600 bg-transparent outline-none cursor-pointer">
+                            <option value="general">全般 (ローカル)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="openDriveModal()" class="text-[11px] bg-blue-50 border border-blue-100 text-blue-600 px-4 py-2 rounded-lg font-bold hover:bg-blue-100 transition">クラウド設定</button>
+                    <button onclick="exportData()" class="text-[11px] bg-slate-50 border px-3 py-2 rounded-lg font-bold hover:bg-slate-100">一括バックアップ</button>
+                </div>
+            </div>
+
+            <div id="localFileWarning" class="hidden p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-xs leading-relaxed">
+                <b>【重要】</b> <code>file://</code> (ローカルファイル) ではGoogleドライブ連携が制限されています。クラウド同期を使用するには、HTMLをサーバー（localhost等）から開く必要があります。
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div class="bg-white p-4 rounded-xl border shadow-sm">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">現在の報告書</p>
+                    <p id="statTotal" class="text-2xl font-black text-slate-800">---</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border shadow-sm col-span-1 md:col-span-2 overflow-hidden flex flex-col justify-center">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">同期ステータス</p>
+                    <p id="syncStatusDesc" class="text-[10px] font-mono text-slate-500 mt-1 truncate">ドライブ内のフォルダを自動取得してグループ分けします</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border overflow-hidden min-h-[400px]">
+                <div class="p-4 bg-slate-50 border-b flex items-center gap-4">
+                    <input type="text" id="searchInput" oninput="renderTable()" placeholder="タイトル、会社名で検索..." class="w-full md:w-80 px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-widest border-b">
+                                <th class="p-4">案件名 / 報告書タイトル</th>
+                                <th class="p-4 hidden md:table-cell">提出先 / 会社名</th>
+                                <th class="p-4 w-32 text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportTableBody" class="text-sm divide-y">
+                            <tr><td colspan="3" class="p-20 text-center text-slate-400">データを読み込んでいます...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 編集画面 -->
+        <div id="editView" class="hidden">
+            <div class="no-print max-w-[210mm] mx-auto mb-6 flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm border">
+                <div class="flex items-center justify-between w-full md:w-auto gap-4">
+                    <button onclick="saveAndShowList()" class="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
+                        ← 完了して戻る
+                    </button>
+                    <h2 class="text-md font-bold truncate max-w-[200px] text-slate-800" id="currentTitleDisp">報告書</h2>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="window.print()" class="btn-save-mobile bg-slate-900 text-white px-8 py-3 md:py-2 rounded-lg font-bold shadow-lg text-sm">PDF保存・印刷</button>
+                </div>
+            </div>
+
+            <div id="pagesContainer" class="print-area"></div>
+
+            <div class="no-print max-w-[210mm] mx-auto mt-4 mb-20 text-center px-2">
+                <button onclick="addBlankPage()" class="w-full py-10 border-2 border-dashed border-slate-300 rounded-2xl text-slate-500 hover:border-blue-500 hover:bg-blue-50 font-bold transition-all bg-white shadow-sm text-base">
+                    + 新しいA4ページ(写真3枚セット)を追加
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast">保存しました</div>
+    <input type="file" id="importInput" class="hidden" accept=".json" onchange="handleImport(event)">
+
+    <!-- SDKの読み込みタグ -->
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoadedGlobal()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoadedGlobal()"></script>
+
+    <script type="module">
+        let reports = [];
+        let currentReportId = null;
+        let currentGroupId = 'general';
+        let driveAccessToken = null;
+        let rootFolderId = null;
+        
+        let tokenClient;
+        let gapiInited = false;
+        let gisInited = false;
+
+        // --- 初期化 ---
+        window.init = async () => {
+            if (window.location.protocol === 'file:') {
+                document.getElementById('localFileWarning').classList.remove('hidden');
+            }
+            const savedClientId = localStorage.getItem('google_drive_client_id');
+            if (savedClientId) {
+                document.getElementById('clientIdInput').value = savedClientId;
+            }
+            loadLocalData();
+        };
+
+        window.addEventListener('gapi-ready', () => { gapiInited = true; });
+        window.addEventListener('gis-ready', () => { gisInited = true; });
+
+        function loadLocalData() {
+            const data = localStorage.getItem(`reports_v7_${currentGroupId}`);
+            reports = data ? JSON.parse(data) : [];
+            updateStats();
+            renderTable();
+        }
+
+        // --- Google Drive 連携 ---
+        window.openDriveModal = () => document.getElementById('driveModal').classList.remove('hidden');
+        window.closeDriveModal = () => document.getElementById('driveModal').classList.add('hidden');
+
+        window.applyGroupId = () => {
+            const clientId = document.getElementById('clientIdInput').value.trim();
+            if (!clientId) { alert('クライアントIDを入力してください'); return; }
+            localStorage.setItem('google_drive_client_id', clientId);
+            
+            if (!gisInited || !gapiInited) {
+                alert('Google SDKの準備ができていません。しばらく待ってから再度お試しください。');
+                return;
+            }
+
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly',
+                callback: async (resp) => {
+                    if (resp.error) return;
+                    driveAccessToken = resp.access_token;
+                    document.getElementById('driveAuthStatus').innerText = '接続成功！フォルダを確認しています...';
+                    document.getElementById('storageModeText').innerText = 'Googleドライブ同期中';
+                    document.getElementById('storageModeText').className = 'text-green-600 font-bold';
+                    await setupDriveSync();
+                },
+            });
+            tokenClient.requestAccessToken();
+        };
+
+        async function setupDriveSync() {
+            try {
+                rootFolderId = await findOrCreateFolder('写真報告書アプリ');
+                await syncGroupsFromDrive();
+                closeDriveModal();
+            } catch (err) {
+                console.error(err);
+                alert('ドライブへのアクセスに失敗しました。クライアントIDが正しいか、Google Cloudの設定でこのドメインが許可されているか確認してください。');
+            }
+        }
+
+        async function findOrCreateFolder(name, parentId = null) {
+            const q = `name = '${name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false${parentId ? ` and '${parentId}' in parents` : ''}`;
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`, {
+                headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+            }).then(r => r.json());
+            if (res.files && res.files.length > 0) return res.files[0].id;
+
+            const created = await fetch('https://www.googleapis.com/drive/v3/files', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${driveAccessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: parentId ? [parentId] : [] })
+            }).then(r => r.json());
+            return created.id;
+        }
+
+        async function syncGroupsFromDrive() {
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q='${rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false&fields=files(id,name)`, {
+                headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+            }).then(r => r.json());
+            const select = document.getElementById('groupSelect');
+            if (select) {
+                select.innerHTML = '<option value="general">全般 (ローカル)</option>';
+                res.files.forEach(f => {
+                    const opt = document.createElement('option');
+                    opt.value = f.id; opt.innerText = f.name;
+                    select.appendChild(opt);
+                });
+            }
+        }
+
+        window.changeGroup = async (groupId) => {
+            currentGroupId = groupId;
+            if (groupId === 'general') {
+                loadLocalData();
+            } else {
+                await loadReportsFromDrive(groupId);
+            }
+        };
+
+        async function loadReportsFromDrive(folderId) {
+            const body = document.getElementById('reportTableBody');
+            if (body) body.innerHTML = '<tr><td colspan="3" class="p-20 text-center text-slate-400">ファイルを読み込んでいます...</td></tr>';
+            try {
+                const res = await fetch(`https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and trashed = false&fields=files(id,name)`, {
+                    headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+                }).then(r => r.json());
+                reports = [];
+                for (const file of res.files || []) {
+                    if (file.name.endsWith('.json')) {
+                        const content = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+                            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+                        }).then(r => r.json()).catch(() => null);
+                        if (content) {
+                            content.driveFileId = file.id;
+                            reports.push(content);
+                        }
+                    }
+                }
+                renderTable();
+                updateStats();
+            } catch (err) {
+                console.error(err);
+                alert('報告書の取得に失敗しました。');
+            }
+        }
+
+        async function saveReportToDrive(report) {
+            if (!driveAccessToken || currentGroupId === 'general') {
+                localStorage.setItem(`reports_v7_${currentGroupId}`, JSON.stringify(reports));
+                return;
+            }
+            const fileName = `report_${report.id}.json`;
+            const metadata = { name: fileName, parents: [currentGroupId] };
+            const blob = new Blob([JSON.stringify(report)], { type: 'application/json' });
+            let url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+            let method = 'POST';
+            if (report.driveFileId) {
+                url = `https://www.googleapis.com/upload/drive/v3/files/${report.driveFileId}?uploadType=multipart`;
+                method = 'PATCH';
+                delete metadata.parents;
+            }
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+            form.append('file', blob);
+            try {
+                const saved = await fetch(url, {
+                    method: method,
+                    headers: { 'Authorization': `Bearer ${driveAccessToken}` },
+                    body: form
+                }).then(r => r.json());
+                report.driveFileId = saved.id;
+            } catch (err) {
+                console.error("Cloud upload failed", err);
+            }
+        }
+
+        // --- 基本操作 ---
+        window.addNewReport = async () => {
+            const id = Date.now().toString();
+            const newReport = {
+                id, title: "新規報告書", subtitle: "", company: "", author: "", 
+                date: new Date().toISOString().split('T')[0],
+                observations: Array(3).fill(null).map(() => ({ img: null, comment: "" })),
+                updatedAt: Date.now()
+            };
+            reports.unshift(newReport);
+            await saveReportToDrive(newReport);
+            editReport(id);
+        };
+
+        window.editReport = (id) => {
+            currentReportId = id;
+            const r = reports.find(report => report.id === id);
+            if (!r) return;
+            document.getElementById('currentTitleDisp').innerText = r.title || "報告書";
+            renderPages();
+            document.getElementById('listView').classList.add('hidden');
+            document.getElementById('editView').classList.remove('hidden');
+            window.scrollTo(0, 0);
+        };
+
+        window.saveAndShowList = () => {
+            currentReportId = null;
+            document.getElementById('editView').classList.add('hidden');
+            document.getElementById('listView').classList.remove('hidden');
+            renderTable();
+        };
+
+        window.deleteReport = async (id) => {
+            if (!confirm("報告書を完全に消去しますか？")) return;
+            const r = reports.find(report => report.id === id);
+            if (driveAccessToken && r.driveFileId) {
+                await fetch(`https://www.googleapis.com/drive/v3/files/${r.driveFileId}`, {
+                    method: 'DELETE', headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+                });
+            }
+            reports = reports.filter(report => report.id !== id);
+            if (currentGroupId === 'general') localStorage.setItem(`reports_v7_${currentGroupId}`, JSON.stringify(reports));
+            renderTable();
+            updateStats();
+        };
+
+        window.updateMeta = (key, val) => {
+            const r = reports.find(report => report.id === currentReportId);
+            if (r) {
+                r[key] = val;
+                if (key === 'title') document.getElementById('currentTitleDisp').innerText = val;
+                r.updatedAt = Date.now();
+                saveReportToDrive(r);
+                showToast();
+            }
+        };
+
+        window.updateObservation = (idx, key, val) => {
+            const r = reports.find(report => report.id === currentReportId);
+            if (r && r.observations[idx]) {
+                r.observations[idx][key] = val;
+                r.updatedAt = Date.now();
+                saveReportToDrive(r);
+                showToast();
+            }
+        };
+
+        window.addBlankPage = () => {
+            const r = reports.find(report => report.id === currentReportId);
+            if (r) {
+                for (let i = 0; i < 3; i++) r.observations.push({ img: null, comment: "" });
+                renderPages();
+                saveReportToDrive(r);
+            }
+        };
+
+        window.moveRow = (idx, dir) => {
+            const r = reports.find(report => report.id === currentReportId);
+            const target = idx + dir;
+            if (!r || target < 0 || target >= r.observations.length) return;
+            [r.observations[idx], r.observations[target]] = [r.observations[target], r.observations[idx]];
+            renderPages();
+            saveReportToDrive(r);
+        };
+
+        window.insertRow = (idx) => {
+            const r = reports.find(report => report.id === currentReportId);
+            if (r) {
+                r.observations.splice(idx, 0, { img: null, comment: "" });
+                renderPages();
+                saveReportToDrive(r);
+            }
+        };
+
+        window.deleteRow = (idx) => {
+            if (!confirm("この項目を削除しますか？")) return;
+            const r = reports.find(report => report.id === currentReportId);
+            if (r) {
+                r.observations.splice(idx, 1);
+                if (r.observations.length === 0) r.observations.push({ img: null, comment: "" });
+                renderPages();
+                saveReportToDrive(r);
+            }
+        };
+
+        // --- 描画ロジック ---
+        function updateStats() {
+            document.getElementById('statTotal').innerText = `${reports.length} 件`;
+        }
+
+        window.renderTable = () => {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            const body = document.getElementById('reportTableBody');
+            if (!body) return;
+            const filtered = reports.filter(r => (r.title || '').toLowerCase().includes(q) || (r.company || '').toLowerCase().includes(q));
+            if (filtered.length === 0) {
+                body.innerHTML = '<tr><td colspan="3" class="p-20 text-center text-slate-400">表示できる報告書がありません。</td></tr>';
+                return;
+            }
+            body.innerHTML = filtered.map(r => `
+                <tr class="hover:bg-blue-50 transition cursor-pointer" onclick="editReport('${r.id}')">
+                    <td class="p-4 font-bold text-slate-800">${r.title || '無題'}</td>
+                    <td class="p-4 text-slate-600 hidden md:table-cell">${r.company || '---'}</td>
+                    <td class="p-4 text-center">
+                        <button onclick="event.stopPropagation(); deleteReport('${r.id}')" class="text-red-400 font-bold px-2 hover:text-red-600 transition">消去</button>
+                    </td>
+                </tr>
+            `).join('');
+        };
+
+        window.renderPages = () => {
+            const container = document.getElementById('pagesContainer');
+            const r = reports.find(report => report.id === currentReportId);
+            if (!r || !container) return;
+            container.innerHTML = '';
+
+            // 表紙 (P1)
+            const cover = document.createElement('div');
+            cover.className = 'a4-page shadow-xl mb-10';
+            cover.id = "page-top";
+            cover.innerHTML = `
+                <div class="flex-1 flex flex-col justify-center items-center py-10 md:py-20 text-center space-y-12">
+                    <div class="w-full space-y-6">
+                        <div class="space-y-2">
+                            <p class="text-xs font-black text-blue-500 tracking-[0.4em]">現場写真報告書</p>
+                            <input type="text" class="text-2xl md:text-4xl font-black w-full text-center border-none bg-transparent focus:ring-0" value="${r.title}" onchange="updateMeta('title', this.value)" placeholder="案件名を入力">
+                        </div>
+                        <input type="text" class="text-lg md:text-xl font-bold w-3/4 text-center border-none border-b border-slate-200 bg-transparent py-2 focus:ring-0" value="${r.subtitle || ''}" onchange="updateMeta('subtitle', this.value)" placeholder="サブタイトルを入力">
+                    </div>
+                    <div class="w-full md:w-1/2 px-6 space-y-8">
+                        <div><p class="text-[10px] font-bold text-slate-400 mb-1 tracking-widest uppercase text-center">作成日</p><input type="date" class="cover-input text-lg font-bold" value="${r.date}" onchange="updateMeta('date', this.value)"></div>
+                        <div><p class="text-[10px] font-bold text-slate-400 mb-1 tracking-widest uppercase text-center">作成担当者</p><input type="text" class="cover-input text-lg font-bold" value="${r.author}" onchange="updateMeta('author', this.value)" placeholder="氏名"></div>
+                    </div>
+                    <div class="mt-auto w-full px-4 pt-10">
+                        <p class="text-[10px] font-bold text-slate-400 mb-1 tracking-widest uppercase text-center">提出先 / 会社名</p>
+                        <input type="text" class="text-xl md:text-2xl font-black w-full text-center border-none bg-transparent focus:ring-0" value="${r.company}" onchange="updateMeta('company', this.value)" placeholder="会社名">
+                    </div>
+                </div>
+                <div class="text-center text-[10px] text-slate-300 font-mono tracking-widest uppercase mt-4">P.1 / 表紙</div>
+            `;
+            container.appendChild(cover);
+
+            // 目次 (P2)
+            const toc = document.createElement('div');
+            toc.className = 'a4-page shadow-xl mb-10';
+            const items = r.observations.map((obs, idx) => `
+                <div class="toc-item" onclick="document.getElementById('obs-${idx}').scrollIntoView({behavior: 'smooth'})">
+                    <div class="flex gap-4 items-baseline overflow-hidden min-w-0 flex-1 text-left">
+                        <span class="font-bold text-blue-600 min-w-[50px]">No.${idx + 1}</span>
+                        <span class="truncate text-slate-700">${obs.comment ? obs.comment.substring(0, 45).replace(/\n/g, ' ') : '（未記入）'}</span>
+                    </div>
+                    <span class="text-slate-300 text-[10px] whitespace-nowrap no-print font-bold uppercase tracking-widest">移動 →</span>
+                </div>
+            `).join('');
+            toc.innerHTML = `
+                <div class="flex-1 flex flex-col p-4 md:p-10">
+                    <h2 class="text-2xl font-black text-center border-b-2 border-slate-900 pb-4 mb-8 uppercase tracking-widest">目次</h2>
+                    <div class="flex-1 overflow-y-auto pr-2">${items || '<p class="text-center text-slate-300 mt-20">報告項目がありません</p>'}</div>
+                </div>
+                <div class="text-center text-[10px] text-slate-300 font-mono tracking-widest uppercase mt-4">P.2 / 目次</div>
+            `;
+            container.appendChild(toc);
+
+            // 写真ページ (P3〜)
+            const pageCount = Math.ceil(r.observations.length / 3) || 1;
+            for (let p = 0; p < pageCount; p++) {
+                const pageEl = document.createElement('div');
+                pageEl.className = 'a4-page shadow-xl mb-10';
+                let rows = '';
+                for (let i = 0; i < 3; i++) {
+                    const idx = p * 3 + i;
+                    const obs = r.observations[idx];
+                    if (obs) {
+                        rows += `
+                            <div id="obs-${idx}" class="flex h-[30%] mb-4 observation-row relative group">
+                                <div class="row-controls no-print">
+                                    <button class="ctrl-btn" onclick="moveRow(${idx}, -1)">↑ 移動</button>
+                                    <button class="ctrl-btn" onclick="moveRow(${idx}, 1)">↓ 移動</button>
+                                    <button class="ctrl-btn" onclick="insertRow(${idx})">＋ 挿入</button>
+                                    <button class="ctrl-btn text-red-500 font-bold" onclick="deleteRow(${idx})">✕ 削除</button>
+                                </div>
+                                <div class="photo-placeholder rounded-lg" onclick="uploadImg(${idx})" onpaste="pasteImg(event, ${idx})" ondragover="event.preventDefault(); this.style.backgroundColor='#eff6ff'" ondragleave="this.style.backgroundColor=''" ondrop="handleDrop(event, ${idx}, this)">
+                                    ${obs.img ? `<img src="${obs.img}"><button class="btn-clear-img no-print" onclick="event.stopPropagation(); clearImage(${idx})">×</button>` : `<div class="text-center text-slate-300"><p class="text-2xl mb-1">📸</p><p class="text-[10px] font-bold">写真を選択 / 撮影</p></div>`}
+                                </div>
+                                <div class="comment-area">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <p class="text-[10px] font-black text-blue-500 tracking-widest font-mono">No.${idx + 1}</p>
+                                        <button onclick="document.getElementById('page-top').scrollIntoView({behavior: 'smooth'})" class="text-[9px] text-slate-300 hover:text-blue-500 no-print font-bold">↑ 目次へ戻る</button>
+                                    </div>
+                                    <textarea onchange="updateObservation(${idx}, 'comment', this.value)" placeholder="状況を入力してください...">${obs.comment || ""}</textarea>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                pageEl.innerHTML = `<div class="flex justify-between items-end border-b-4 border-slate-900 pb-2 mb-8 text-slate-900 font-bold"><h3 class="truncate mr-4 text-lg">${r.title || ''}</h3><p class="text-xs font-bold text-slate-500 whitespace-nowrap">${r.date || ''}</p></div><div class="flex-1">${rows}</div><div class="text-center text-[10px] text-slate-300 font-mono mt-4 tracking-tighter">PAGE ${p + 3} / ${pageCount + 2}</div>`;
+                container.appendChild(pageEl);
+            }
+        };
+
+        // --- その他ユーティリティ ---
+        window.uploadImg = (idx) => {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = 'image/*';
+            input.onchange = (e) => {
+                const reader = new FileReader();
+                reader.onload = (re) => {
+                    const r = reports.find(report => report.id === currentReportId);
+                    if (r) { r.observations[idx].img = re.target.result; renderPages(); saveReportToDrive(r); }
+                };
+                reader.readAsDataURL(e.target.files[0]);
+            };
+            input.click();
+        };
+
+        window.clearImage = (idx) => {
+            const r = reports.find(report => report.id === currentReportId);
+            if (r) { r.observations[idx].img = null; renderPages(); saveReportToDrive(r); }
+        };
+
+        window.handleDrop = (e, idx, el) => {
+            e.preventDefault(); el.style.backgroundColor = '';
+            if (e.dataTransfer.files.length > 0) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const r = reports.find(report => report.id === currentReportId);
+                    if (r) { r.observations[idx].img = ev.target.result; renderPages(); saveReportToDrive(r); }
+                };
+                reader.readAsDataURL(e.dataTransfer.files[0]);
+            }
+        };
+
+        window.pasteImg = (e, idx) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.type.indexOf("image") !== -1) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        const r = reports.find(report => report.id === currentReportId);
+                        if (r) { r.observations[idx].img = ev.target.result; renderPages(); saveReportToDrive(r); }
+                    };
+                    reader.readAsDataURL(item.getAsFile());
+                }
+            }
+        };
+
+        function showToast() {
+            const t = document.getElementById('toast');
+            if (t) { t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 1500); }
+        }
+
+        window.exportData = () => {
+            const blob = new Blob([JSON.stringify(reports)], {type: 'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `reports-backup-${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+        };
+
+        window.init();
+    </script>
+</body>
+</html>
